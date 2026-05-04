@@ -1,0 +1,73 @@
+name: Real Estate Tracker
+
+on:
+  schedule:
+    # Runs every day at 8am UTC — free on GitHub Actions
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+    inputs:
+      locations:
+        description: "Pipe-separated locations e.g. Austin TX|Denver CO|Nashville TN"
+        required: false
+        default: "Austin, TX|Denver, CO"
+      sources:
+        description: "Comma-separated sources (zillow,realtor,redfin,trulia,homes)"
+        required: false
+        default: "zillow,realtor,redfin,trulia,homes"
+      dry_run:
+        description: "Dry run (no writes)"
+        type: boolean
+        default: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Run tracker
+        env:
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          BQ_DATASET: real_estate
+          BQ_TABLE: listings
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          NOTIFY_EMAIL: ${{ secrets.NOTIFY_EMAIL }}
+          MAX_ITEMS_PER_SOURCE: "50"
+          DEFAULT_LOCATIONS: "Austin, TX|Denver, CO|Nashville, TN"
+        run: |
+          RAW_LOCS="${{ github.event.inputs.locations || env.DEFAULT_LOCATIONS }}"
+          SOURCES="${{ github.event.inputs.sources || 'zillow,realtor,redfin,trulia,homes' }}"
+          DRY_RUN="${{ github.event.inputs.dry_run || 'false' }}"
+
+          LOCS_ARGS=""
+          IFS='|' read -ra LOCS <<< "$RAW_LOCS"
+          for loc in "${LOCS[@]}"; do
+            trimmed=$(echo "$loc" | xargs)
+            LOCS_ARGS="$LOCS_ARGS \"$trimmed\""
+          done
+
+          SOURCES_ARGS=$(echo $SOURCES | tr ',' ' ')
+          DRY_FLAG=""
+          if [ "$DRY_RUN" = "true" ]; then DRY_FLAG="--dry-run"; fi
+
+          eval python main.py --locations $LOCS_ARGS --sources $SOURCES_ARGS $DRY_FLAG
