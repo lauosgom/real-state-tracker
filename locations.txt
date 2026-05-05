@@ -2,8 +2,10 @@
 # Lines starting with # are ignored
 # Supports city/state, zip codes, or neighborhood names
 
-Austin, TX
-Denver, CO
-Nashville, TN
+Somerville, MA
+Malden, MA
+Medford, MA
+Arlington, MA
+Woburn, MA
 # Portland, OR
 # 78701
